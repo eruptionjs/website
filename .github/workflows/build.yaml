@@ -1,0 +1,90 @@
+name: Build website
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  BUILD_PATH: "."
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+# This workflow contains two jobs: one to build and another to upload our content to GH Pages
+jobs:
+
+  # The first job holds responsibility to install deps, build and upload
+  # artifacts from GH container to expose them later
+
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Here we execute our job, each step represents one phase of our pipeline
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: Checkout codebase
+        uses: actions/checkout@v3
+
+      # Setup our Pages environment to work on later
+      - name: Setup Pages environment
+        id: build_page
+        uses: action@configure-pages@v3
+
+      # Setup NodeJS and NPM to build our frontend
+      - name: Setup NodeJS platform
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ${{ env.BUILD_PATH }}/package-lock.json
+
+      # Run NPM CI to clean and install dependencies 
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ${{ env.BUILD_PATH }}
+
+      # Builds Astro/Starlight environment with GH Pages settings
+      - name: Build Astro environment
+        working-directory: ${{ env.BUILD_PATH }}
+        run: | 
+          npm run build \
+          --site "${{ steps.build_page.outputs.origin }}" \
+          --base "${{ steps.build_page.outputs.base_path }}" 
+
+      # Uploads generated artifact to GitHub
+      - name: Upload artifact to GH
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: ${{ env.BUILD_PATH }}/dist
+    
+  production_deployment:
+    # Setup our job, declaring dependency on Build job and Ubuntu
+    name: Deploy to production
+    needs: build
+    runs-on: ubuntu-latest 
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
